@@ -104,6 +104,11 @@ class IsolatedFileWrite:
 
     def __init__(self):
         self.private_data_dir = os.getenv('AWX_ISOLATED_DATA_DIR')
+        with open(self.private_data_dir + '/artifacts/hello.txt', 'w') as f:
+            f.write('hello world')
+
+
+
 
     def set(self, key, value):
         # Strip off the leading key identifying characters :1:ev-
