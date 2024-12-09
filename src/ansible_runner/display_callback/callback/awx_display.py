@@ -40,6 +40,11 @@ from ansible.plugins.callback import CallbackBase
 from ansible.plugins.loader import callback_loader
 from ansible.utils.display import Display
 
+from ansible.cli.galaxy import with_collection_artifacts_manager
+from ansible.utils.collection_loader import AnsibleCollectionConfig
+from ansible.galaxy.collection import (
+    find_existing_collections,
+)
 
 DOCUMENTATION = '''
     callback: awx_display
@@ -68,6 +73,22 @@ DefaultCallbackModule: CallbackBase = callback_loader.get(default_stdout_callbac
 
 CENSORED = "the output has been hidden due to the fact that 'no_log: true' was specified for this result"
 
+@with_collection_artifacts_manager
+def list_collections(namespace, collection, artifacts_manager=None):
+    artifacts_manager.require_build_metadata = False
+
+    default_collections_path = set(C.COLLECTIONS_PATHS)
+    collections_search_paths = (
+        default_collections_path | set(AnsibleCollectionConfig.collection_paths)
+    )
+    collections = list(find_existing_collections(
+        list(collections_search_paths),
+        artifacts_manager,
+        namespace_filter=namespace,
+        collection_filter=collection,
+        dedupe=False
+    ))
+    return collections
 
 def current_time():
     return datetime.datetime.now(datetime.timezone.utc)
@@ -104,11 +125,8 @@ class IsolatedFileWrite:
 
     def __init__(self):
         self.private_data_dir = os.getenv('AWX_ISOLATED_DATA_DIR')
-        with open(self.private_data_dir + '/artifacts/hello.txt', 'w') as f:
+        with open(self.private_data_dir + '/hello.txt', 'w+') as f:
             f.write('hello world')
-
-
-
 
     def set(self, key, value):
         # Strip off the leading key identifying characters :1:ev-
@@ -347,6 +365,7 @@ class CallbackModule(DefaultCallbackModule):
 
     def __init__(self):
         super().__init__()
+        self.task = None
         self._host_start = {}
         self.task_uuids = set()
         self.duplicate_task_counts = collections.defaultdict(lambda: 1)
@@ -410,6 +429,7 @@ class CallbackModule(DefaultCallbackModule):
         self.clear_task()
 
     def set_task(self, task, local=False):
+        self.task = task
         self.clear_task(local)
         # FIXME: Task is "global" unless using free strategy!
         task_ctx = {
@@ -671,6 +691,14 @@ class CallbackModule(DefaultCallbackModule):
         }
         with self.capture_event_data('runner_on_ok', **event_data):
             super().v2_runner_on_ok(result)
+
+        namespace, collection, module = self.task.resolved_action.split('.')
+        print("=================================================")
+        print(namespace)
+        print(collection)
+        print(module)
+        collections = list_collections(namespace, collection)
+        print(collections)
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
         # FIXME: Add verbosity for exception/results output.
